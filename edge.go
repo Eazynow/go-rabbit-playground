@@ -5,13 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
-	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/streadway/amqp"
+	"github.com/twinj/uuid"
 )
 
 var (
@@ -29,18 +26,6 @@ func failOnError(err error, msg string) {
 		log.Fatalf("%s: %s", msg, err)
 		panic(fmt.Sprintf("%s: %s", msg, err))
 	}
-}
-
-func randomString(l int) string {
-	bytes := make([]byte, l)
-	for i := 0; i < l; i++ {
-		bytes[i] = byte(randInt(65, 90))
-	}
-	return string(bytes)
-}
-
-func randInt(min int, max int) int {
-	return min + rand.Intn(max-min)
 }
 
 func callRabbit() {
@@ -76,13 +61,15 @@ func callRabbit() {
 	)
 	failOnError(err, "Failed to register a consumer")
 
-	corrId := randomString(32)
-
 	start := time.Now()
 
 	sum := 0
 	for i := 0; i < *msgcount; i++ {
 		callStart := time.Now()
+
+		u := uuid.NewV4()
+		corrId := u.String()
+
 		sum += i
 		err = ch.Publish(
 			"",     // exchange
@@ -106,7 +93,7 @@ func callRabbit() {
 					panic(err)
 				}
 				callElapsed := time.Since(callStart)
-				log.Printf("#%d : Healthy = %t took %fms", i+1, dat.Healthy, callElapsed.Seconds()*1000)
+				log.Printf("#%d : %s : Healthy = %t took %fms", i+1, corrId, dat.Healthy, callElapsed.Seconds()*1000)
 				break
 			}
 		}
@@ -119,23 +106,9 @@ func callRabbit() {
 func main() {
 	flag.Parse()
 
-	rand.Seed(time.Now().UTC().UnixNano())
-
 	log.Println("Starting...")
 
 	callRabbit()
 
 	log.Println("Finished.")
-}
-
-func bodyFrom(args []string) int {
-	var s string
-	if (len(args) < 2) || os.Args[1] == "" {
-		s = "30"
-	} else {
-		s = strings.Join(args[1:], " ")
-	}
-	n, err := strconv.Atoi(s)
-	failOnError(err, "Failed to convert arg to integer")
-	return n
 }
