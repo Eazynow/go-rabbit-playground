@@ -1,11 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
-	"strconv"
+	"time"
 
 	"github.com/streadway/amqp"
+)
+
+var (
+	url   = flag.String("url", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
+	queue = flag.String("queue", "mstest", "The queue to use")
 )
 
 func failOnError(err error, msg string) {
@@ -15,32 +22,31 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func fib(n int) int {
-	if n == 0 {
-		return 0
-	} else if n == 1 {
-		return 1
-	} else {
-		return fib(n-1) + fib(n-2)
-	}
+type HealthResponse struct {
+	Healthy bool `json:"healthy"`
 }
 
 func main() {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
-	failOnError(err, "Failed to connect to RabbitMQ")
+	flag.Parse()
+
+	log.Printf("Connecting to %s", *url)
+	conn, err := amqp.Dial(*url)
+	failOnError(err, "Failed to connect to RabbitMQ.")
 	defer conn.Close()
 
+	log.Println("Opening a channel")
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer ch.Close()
 
+	log.Printf("Declaring a queue named %s", *queue)
 	q, err := ch.QueueDeclare(
-		"rpc_queue", // name
-		false,       // durable
-		false,       // delete when usused
-		false,       // exclusive
-		false,       // no-wait
-		nil,         // arguments
+		*queue, // name
+		false,  // durable
+		false,  // delete when usused
+		false,  // exclusive
+		false,  // no-wait
+		nil,    // arguments
 	)
 	failOnError(err, "Failed to declare a queue")
 
@@ -66,11 +72,12 @@ func main() {
 
 	go func() {
 		for d := range msgs {
-			n, err := strconv.Atoi(string(d.Body))
-			failOnError(err, "Failed to convert body to integer")
+			log.Printf("Incoming request at %s", time.Now().String())
 
-			log.Printf(" [.] fib(%d)", n)
-			response := fib(n)
+			response := &HealthResponse{
+				Healthy: true}
+
+			jresponse, _ := json.Marshal(response)
 
 			err = ch.Publish(
 				"",        // exchange
@@ -80,7 +87,7 @@ func main() {
 				amqp.Publishing{
 					ContentType:   "text/plain",
 					CorrelationId: d.CorrelationId,
-					Body:          []byte(strconv.Itoa(response)),
+					Body:          jresponse,
 				})
 			failOnError(err, "Failed to publish a message")
 
@@ -88,6 +95,6 @@ func main() {
 		}
 	}()
 
-	log.Printf(" [*] Awaiting RPC requests")
+	log.Printf(" [*] Awaiting requests")
 	<-forever
 }

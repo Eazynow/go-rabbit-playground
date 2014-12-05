@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -11,6 +13,16 @@ import (
 
 	"github.com/streadway/amqp"
 )
+
+var (
+	url      = flag.String("u", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
+	queue    = flag.String("q", "mstest", "The queue to use")
+	msgcount = flag.Int("c", 50, "Number of messages to send")
+)
+
+type HealthResponse struct {
+	Healthy bool `json:"healthy"`
+}
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -31,8 +43,9 @@ func randInt(min int, max int) int {
 	return min + rand.Intn(max-min)
 }
 
-func fibonacciRPC(n int) (res int, err error) {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+func callRabbit() {
+	log.Printf("Connecting to %s", *url)
+	conn, err := amqp.Dial(*url)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
@@ -50,6 +63,8 @@ func fibonacciRPC(n int) (res int, err error) {
 	)
 	failOnError(err, "Failed to declare a queue")
 
+	log.Printf("Declared queue called %s", q.Name)
+
 	msgs, err := ch.Consume(
 		q.Name, // queue
 		"",     // consumer
@@ -63,40 +78,52 @@ func fibonacciRPC(n int) (res int, err error) {
 
 	corrId := randomString(32)
 
-	err = ch.Publish(
-		"",          // exchange
-		"rpc_queue", // routing key
-		false,       // mandatory
-		false,       // immediate
-		amqp.Publishing{
-			ContentType:   "text/plain",
-			CorrelationId: corrId,
-			ReplyTo:       q.Name,
-			Body:          []byte(strconv.Itoa(n)),
-		})
-	failOnError(err, "Failed to publish a message")
+	start := time.Now()
 
-	for d := range msgs {
-		if corrId == d.CorrelationId {
-			res, err = strconv.Atoi(string(d.Body))
-			failOnError(err, "Failed to convert body to integer")
-			break
+	sum := 0
+	for i := 0; i < *msgcount; i++ {
+		sum += i
+		err = ch.Publish(
+			"",     // exchange
+			*queue, // routing key
+			false,  // mandatory
+			false,  // immediate
+			amqp.Publishing{
+				ContentType:   "text/plain",
+				CorrelationId: corrId,
+				ReplyTo:       q.Name,
+				Body:          []byte(""),
+			})
+		failOnError(err, "Failed to publish a message")
+
+		for d := range msgs {
+			if corrId == d.CorrelationId {
+
+				dat := &HealthResponse{}
+
+				if err := json.Unmarshal(d.Body, &dat); err != nil {
+					panic(err)
+				}
+				log.Printf("Healthy = %t", dat.Healthy)
+				break
+			}
 		}
 	}
-
+	elapsed := time.Since(start)
+	log.Printf("Processed %d messages in %fms\n", *msgcount, elapsed.Seconds()*1000)
 	return
 }
 
 func main() {
+	flag.Parse()
+
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	n := bodyFrom(os.Args)
+	log.Println("Starting...")
 
-	log.Printf(" [x] Requesting fib(%d)", n)
-	res, err := fibonacciRPC(n)
-	failOnError(err, "Failed to handle RPC request")
+	callRabbit()
 
-	log.Printf(" [.] Got %d", res)
+	log.Println("Finished.")
 }
 
 func bodyFrom(args []string) int {
