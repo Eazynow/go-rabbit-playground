@@ -1,10 +1,16 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
 	"github.com/streadway/amqp"
+)
+
+var (
+	url   = flag.String("url", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
+	queue = flag.String("queue", "sendrcv", "The queue to use")
 )
 
 func failOnError(err error, msg string) {
@@ -15,21 +21,26 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
-	failOnError(err, "Failed to connect to RabbitMQ")
+	flag.Parse()
+
+	log.Printf("Connecting to %s", *url)
+	conn, err := amqp.Dial(*url)
+	failOnError(err, "Failed to connect to RabbitMQ.")
 	defer conn.Close()
 
+	log.Println("Opening a channel")
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to open a channel")
 	defer ch.Close()
 
+	log.Printf("Declaring a queue named %s", *queue)
 	q, err := ch.QueueDeclare(
-		"hello", // name
-		false,   // durable
-		false,   // delete when usused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
+		*queue, // name
+		false,  // durable
+		false,  // delete when usused
+		false,  // exclusive
+		false,  // no-wait
+		nil,    // arguments
 	)
 	failOnError(err, "Failed to declare a queue")
 
