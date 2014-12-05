@@ -82,6 +82,7 @@ func callRabbit() {
 
 	sum := 0
 	for i := 0; i < *msgcount; i++ {
+		callStart := time.Now()
 		sum += i
 		err = ch.Publish(
 			"",     // exchange
@@ -104,7 +105,8 @@ func callRabbit() {
 				if err := json.Unmarshal(d.Body, &dat); err != nil {
 					panic(err)
 				}
-				log.Printf("Healthy = %t", dat.Healthy)
+				callElapsed := time.Since(callStart)
+				log.Printf("Healthy = %t took %fms", dat.Healthy, callElapsed.Seconds()*1000)
 				break
 			}
 		}
