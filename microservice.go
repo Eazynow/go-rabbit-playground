@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	url   = flag.String("url", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
-	queue = flag.String("queue", "mstest", "The queue to use")
+	url   = flag.String("u", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
+	queue = flag.String("q", "mstest", "The queue to use")
 )
 
 func failOnError(err error, msg string) {
