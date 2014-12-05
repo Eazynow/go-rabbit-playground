@@ -106,7 +106,7 @@ func callRabbit() {
 					panic(err)
 				}
 				callElapsed := time.Since(callStart)
-				log.Printf("Healthy = %t took %fms", dat.Healthy, callElapsed.Seconds()*)
+				log.Printf("Healthy = %t took %fms", dat.Healthy, callElapsed.Seconds())
 				break
 			}
 		}
