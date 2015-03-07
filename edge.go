@@ -1,6 +1,7 @@
 package main
 
 import (
+	"./common"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,11 +16,8 @@ var (
 	url      = flag.String("u", "amqp://guest:guest@localhost:5672/", "The url to rabbitmq")
 	queue    = flag.String("q", "mstest", "The queue to use")
 	msgcount = flag.Int("c", 50, "Number of messages to send")
+	qpm      = flag.Bool("qpm", false, "Add this to declare a new response queue per message")
 )
-
-type HealthResponse struct {
-	Healthy bool `json:"healthy"`
-}
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -28,15 +26,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func callRabbit() {
-	log.Printf("Connecting to %s", *url)
-	conn, err := amqp.Dial(*url)
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
+func declareResponseQueue(ch *amqp.Channel) (amqp.Queue, <-chan amqp.Delivery) {
 
 	q, err := ch.QueueDeclare(
 		"",    // name
@@ -61,7 +51,25 @@ func callRabbit() {
 	)
 	failOnError(err, "Failed to register a consumer")
 
+	return q, msgs
+}
+
+func callRabbit() {
+	log.Printf("Connecting to %s", *url)
+	conn, err := amqp.Dial(*url)
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer ch.Close()
+
 	start := time.Now()
+
+	var q amqp.Queue
+	var msgs <-chan amqp.Delivery
+
+	q, msgs = declareResponseQueue(ch)
 
 	sum := 0
 	for i := 0; i < *msgcount; i++ {
@@ -87,19 +95,30 @@ func callRabbit() {
 		for d := range msgs {
 			if corrId == d.CorrelationId {
 
-				dat := &HealthResponse{}
+				dat := &common.HealthCheck{}
 
 				if err := json.Unmarshal(d.Body, &dat); err != nil {
 					panic(err)
 				}
 				callElapsed := time.Since(callStart)
-				log.Printf("#%d : %s : Healthy = %t took %fms", i+1, corrId, dat.Healthy, callElapsed.Seconds()*1000)
+				dat.SetMS("rabbitmq", callElapsed.Seconds()*1000)
+				// disabling screen output to increase throughput
+				// log.Printf("#%d : Message %s : Worker %s : Healthy = %t : Took %fms",
+				// 	i+1,
+				// 	corrId,
+				// 	dat.WorkerId,
+				// 	dat.Healthy,
+				// 	dat.ResponseMS["rabbitmq"])
 				break
 			}
 		}
+		if *qpm {
+			q, msgs = declareResponseQueue(ch)
+		}
 	}
 	elapsed := time.Since(start)
-	log.Printf("Processed %d messages in %fms\n", *msgcount, elapsed.Seconds()*1000)
+	ms := elapsed.Seconds() * 1000
+	log.Printf("Processed %d messages in %.2fms (%.2fms/msg)\n", *msgcount, ms, ms/float64(*msgcount))
 	return
 }
 

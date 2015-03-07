@@ -1,13 +1,15 @@
 package main
 
 import (
+	"./common"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
-	"time"
+	//"time"
 
 	"github.com/streadway/amqp"
+	"github.com/twinj/uuid"
 )
 
 var (
@@ -22,12 +24,12 @@ func failOnError(err error, msg string) {
 	}
 }
 
-type HealthResponse struct {
-	Healthy bool `json:"healthy"`
-}
-
 func main() {
 	flag.Parse()
+
+	u := uuid.NewV4()
+	workerId := u.String()
+	log.Printf("Starting worker %s", workerId)
 
 	log.Printf("Connecting to %s", *url)
 	conn, err := amqp.Dial(*url)
@@ -72,10 +74,13 @@ func main() {
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Incoming request at %s", time.Now().String())
+			// disabling screen output to increase throughput
+			log.Print("incoming")
 
-			response := &HealthResponse{
+			response := &common.HealthCheck{
 				Healthy: true}
+
+			response.WorkerId = workerId
 
 			jresponse, _ := json.Marshal(response)
 
