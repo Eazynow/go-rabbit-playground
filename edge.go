@@ -124,7 +124,9 @@ func callRabbit() {
 	}
 	elapsed := time.Since(start)
 	ms := elapsed.Seconds() * 1000
-	log.Printf("Processed %d messages in %.2fms (%.2fms/msg)\n", *msgcount, ms, ms/float64(*msgcount))
+	mspermsg := ms / float64(*msgcount)
+	msgpersec := 1000.0 / mspermsg
+	log.Printf("Processed %d messages in %.2fms (%.2fms/msg | %.2fmsg/s)\n", *msgcount, ms, mspermsg, msgpersec)
 	return
 }
 
