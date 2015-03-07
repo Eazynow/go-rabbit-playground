@@ -17,6 +17,7 @@ var (
 	queue    = flag.String("q", "mstest", "The queue to use")
 	msgcount = flag.Int("c", 50, "Number of messages to send")
 	qpm      = flag.Bool("qpm", false, "Add this to declare a new response queue per message")
+	lpl      = flag.Bool("lpl", false, "Add this to log per line rather than just start and end")
 )
 
 func failOnError(err error, msg string) {
@@ -38,7 +39,9 @@ func declareResponseQueue(ch *amqp.Channel) (amqp.Queue, <-chan amqp.Delivery) {
 	)
 	failOnError(err, "Failed to declare a queue")
 
-	log.Printf("Declared queue called %s", q.Name)
+	if *lpl {
+		log.Printf("Declared queue called %s", q.Name)
+	}
 
 	msgs, err := ch.Consume(
 		q.Name, // queue
@@ -102,13 +105,16 @@ func callRabbit() {
 				}
 				callElapsed := time.Since(callStart)
 				dat.SetMS("rabbitmq", callElapsed.Seconds()*1000)
-				// disabling screen output to increase throughput
-				// log.Printf("#%d : Message %s : Worker %s : Healthy = %t : Took %fms",
-				// 	i+1,
-				// 	corrId,
-				// 	dat.WorkerId,
-				// 	dat.Healthy,
-				// 	dat.ResponseMS["rabbitmq"])
+
+				if *lpl {
+					log.Printf("#%d : Message %s : Worker %s : Healthy = %t : Took %fms",
+						i+1,
+						corrId,
+						dat.WorkerId,
+						dat.Healthy,
+						dat.ResponseMS["rabbitmq"])
+				}
+
 				break
 			}
 		}
