@@ -1,10 +1,10 @@
 package main
 
 import (
-	"./common"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Eazynow/go-rabbit-playground/common"
 	"log"
 	//"time"
 
